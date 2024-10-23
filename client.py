@@ -3,16 +3,17 @@ import threading
 import uuid
 import json
 import datetime
+import asyncio
 
 client_id = str(uuid.uuid4())
 stop_event = threading.Event()
 pause_event = threading.Event()
 
 
-def handle_received_messages(sock):
+async def handle_received_messages(sock, loop):
     while not stop_event.is_set():
         try:
-            data = sock.recv(1024)
+            data = await loop.sock_recv(sock, 1024)
             if not data:
                 break
             message = data.decode()
@@ -37,6 +38,12 @@ def handle_received_messages(sock):
         except ConnectionResetError:
             print("Connection closed by the server")
             break
+
+def receive_messages(sock):
+    # inject some async code to make reading potentially huge amount of messages from socket non-blocking
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(handle_received_messages(sock, loop))
 
 
 def send_messages(sock):
@@ -66,7 +73,7 @@ def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((server_ip, server_port))
 
-    receive_thread = threading.Thread(target=handle_received_messages,
+    receive_thread = threading.Thread(target=receive_messages,
                                       args=(sock,))
     send_thread = threading.Thread(target=send_messages, args=(sock,))
 
